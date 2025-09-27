@@ -7,7 +7,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use App\Models\Fotomulta;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @OA\Info(
@@ -57,12 +60,35 @@ class FotomultasController extends Controller
      */
     public function login(Request $request): JsonResponse
     {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+        $validated = $request->validate([
+            'email' => 'required|email:rfc,dns|max:255',
+            'password' => 'required|string|min:6|max:255',
         ]);
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        // Sanitizar email
+        $email = filter_var(trim($validated['email']), FILTER_SANITIZE_EMAIL);
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Log::channel('fotomultas')->warning('Login attempt with invalid email', [
+                'email' => $email,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Email inválido'
+            ], 422);
+        }
+
+        if (!Auth::attempt(['email' => $email, 'password' => $validated['password']])) {
+            Log::channel('fotomultas')->warning('Failed login attempt', [
+                'email' => $email,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'timestamp' => now()->toISOString()
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Credenciales inválidas'
@@ -71,6 +97,14 @@ class FotomultasController extends Controller
 
         $user = Auth::user();
         $token = $user->createToken('fotomultas-api')->plainTextToken;
+
+        Log::channel('fotomultas')->info('Successful login', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'timestamp' => now()->toISOString()
+        ]);
 
         return response()->json([
             'success' => true,
@@ -116,17 +150,34 @@ class FotomultasController extends Controller
      */
     public function detecciones(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         // Validar solo los parámetros de fecha
         $validated = $request->validate([
-            'fecha_inicio' => 'nullable|date_format:Y-m-d H:i:s',
-            'fecha_fin' => 'nullable|date_format:Y-m-d H:i:s'
+            'fecha_inicio' => 'nullable|date_format:Y-m-d H:i:s|after:2020-01-01|before:' . now()->addDay(),
+            'fecha_fin' => 'nullable|date_format:Y-m-d H:i:s|after:fecha_inicio|before:' . now()->addDay(),
+
         ]);
 
         $fechaInicio = $validated['fecha_inicio'] ?? null;
         $fechaFin = $validated['fecha_fin'] ?? null;
 
+        Log::channel('fotomultas')->info('Detecciones request', [
+            'user_id' => Auth::id(),
+            'fecha_inicio' => $fechaInicio,
+            'fecha_fin' => $fechaFin,
+            'ip' => $request->ip(),
+            'timestamp' => now()->toISOString()
+        ]);
+
         // Validar que fecha_inicio sea menor que fecha_fin
         if ($fechaInicio && $fechaFin && $fechaInicio > $fechaFin) {
+            Log::channel('fotomultas')->warning('Invalid date range in detecciones', [
+                'user_id' => Auth::id(),
+                'fecha_inicio' => $fechaInicio,
+                'fecha_fin' => $fechaFin
+            ]);
+
             return response()->json([
                 'error' => 'La fecha de inicio no puede ser mayor que la fecha de fin'
             ], 422);
@@ -157,6 +208,17 @@ class FotomultasController extends Controller
             return $this->mapFotomultaToDeteccion($fotomulta);
         });
 
+        $endTime = microtime(true);
+        $responseTime = round(($endTime - $startTime) * 1000, 2);
+
+        Log::channel('fotomultas')->info('Detecciones response', [
+            'user_id' => Auth::id(),
+            'records_found' => $detecciones->count(),
+            'response_time_ms' => $responseTime,
+            'filters_applied' => ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin],
+            'timestamp' => now()->toISOString()
+        ]);
+
         return response()->json($detecciones);
     }
 
@@ -186,7 +248,7 @@ class FotomultasController extends Controller
     {
         // Decodificar URL si viene encoded
         $imgUrl = urldecode($imgUrl);
-        
+
         // Validar formato de la URL: recordId/radarId/ticketId/filename
         if (!preg_match('/^([a-f0-9]{32})\/(\d{5})\/(\d+)\/([a-zA-Z0-9._-]+\.(jpg|jpeg|png|gif|bmp))$/i', $imgUrl, $matches)) {
             return response()->json(['error' => 'Formato de URL de imagen inválido'], 400);
@@ -204,7 +266,7 @@ class FotomultasController extends Controller
         // Verificar que la imagen existe en alguna de las columnas img1, img2, img3
         $imgFields = ['img1', 'img2', 'img3'];
         $imagenEncontrada = false;
-        
+
         foreach ($imgFields as $field) {
             if ($fotomulta->$field === $fileName) {
                 $imagenEncontrada = true;
@@ -229,9 +291,47 @@ class FotomultasController extends Controller
      *     @OA\Response(response=200, description="Logout exitoso")
      * )
      */
-    public function logout(Request $request): JsonResponse
+    /**
+     * @OA\Get(
+     *     path="/api/health",
+     *     tags={"Health"},
+     *     summary="Health check endpoint",
+     *     @OA\Response(
+     *         response=200,
+     *         description="API funcionando correctamente",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="status", type="string", example="ok"),
+     *             @OA\Property(property="database", type="string", example="connected"),
+     *             @OA\Property(property="records", type="integer", example=1250),
+     *             @OA\Property(property="timestamp", type="string", example="2025-01-15T10:30:45.000000Z")
+     *         )
+     *     ),
+     *     @OA\Response(response=500, description="Error en el sistema")
+     * )
+     */
+    public function health(): JsonResponse
     {
-        return response()->json(['message' => 'Logout exitoso']);
+        try {
+            // Verificar conexión a base de datos
+            DB::connection()->getPdo();
+
+            // Verificar tabla principal con una consulta simple
+            $count = Fotomulta::count();
+
+            return response()->json([
+                'status' => 'ok',
+                'database' => 'connected',
+                'records' => $count,
+                'timestamp' => now()->toISOString()
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'database' => 'disconnected',
+                'message' => 'Database connection failed',
+                'timestamp' => now()->toISOString()
+            ], 500);
+        }
     }
 
     /**
@@ -254,7 +354,7 @@ class FotomultasController extends Controller
 
         // Construir channelInfoVO
         $channelMappings = $this->getChannelMappings($fotomulta->localida);
-        
+
         $channelInfoVO = [
             'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
             'state' => 1,
@@ -267,12 +367,12 @@ class FotomultasController extends Controller
         $imgList = [];
         $imgFields = ['img1', 'img2', 'img3'];
         $radarId = $this->getRadarId($fotomulta->localida);
-        
+
         foreach ($imgFields as $index => $field) {
             if ($fotomulta->$field) {
                 // Construir la ruta: token_generado/id_radar/id_ticket/imagen
                 $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
-                
+
                 $imgList[] = [
                     'imgUrl' => $imgUrl,
                     'imgIdx' => $index + 1,
@@ -315,11 +415,11 @@ class FotomultasController extends Controller
     {
         $apiKey = config('services.streetsoncloud.api_key');
         $baseUrl = config('services.streetsoncloud.api_url');
-        
+
         if (!$apiKey) {
             return response()->json(['error' => 'API key no configurada'], 500);
         }
-        
+
         $metaUrl = "{$baseUrl}/ticket-image/{$ticketId}/{$fileName}";
 
         try {
@@ -350,7 +450,6 @@ class FotomultasController extends Controller
             return response($img->body(), 200)
                 ->header('Content-Type', $mime)
                 ->header('Cache-Control', 'public, max-age=3600');
-
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Error al procesar la imagen: ' . $e->getMessage()

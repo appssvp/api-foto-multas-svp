@@ -191,23 +191,46 @@
                 ]
             }
         },
-        "/api/auth/logout": {
-            "post": {
+        "/api/health": {
+            "get": {
                 "tags": [
-                    "Auth"
+                    "Health"
                 ],
-                "summary": "Cerrar sesión",
-                "operationId": "01ad23fe04a1afe6b0ee09eb419c4345",
+                "summary": "Health check endpoint",
+                "operationId": "ad219f8207bf14cbace7fc7e13026646",
                 "responses": {
                     "200": {
-                        "description": "Logout exitoso"
+                        "description": "API funcionando correctamente",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "ok"
+                                        },
+                                        "database": {
+                                            "type": "string",
+                                            "example": "connected"
+                                        },
+                                        "records": {
+                                            "type": "integer",
+                                            "example": 1250
+                                        },
+                                        "timestamp": {
+                                            "type": "string",
+                                            "example": "2025-01-15T10:30:45.000000Z"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Error en el sistema"
                     }
-                },
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ]
+                }
             }
         }
     },
@@ -232,6 +255,10 @@
         {
             "name": "Imágenes",
             "description": "Imágenes"
+        },
+        {
+            "name": "Health",
+            "description": "Health"
         }
     ]
 }
