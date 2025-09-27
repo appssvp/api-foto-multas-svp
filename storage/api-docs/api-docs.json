@@ -143,16 +143,43 @@
                 ]
             }
         },
-        "/api/imagenes": {
-            "post": {
+        "/api/imagenes/{ticketId}": {
+            "get": {
                 "tags": [
                     "Imágenes"
                 ],
-                "summary": "Endpoint de imágenes",
-                "operationId": "e95f28f47334dd016a5f2e9534e5744a",
+                "summary": "Obtener imágenes de fotomulta",
+                "operationId": "8878c16dec5252503065d51cf0c36f93",
+                "parameters": [
+                    {
+                        "name": "ticketId",
+                        "in": "path",
+                        "description": "ID del ticket",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "img",
+                        "in": "query",
+                        "description": "Número de imagen (1, 2, o 3). Por defecto: 1",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Imágenes procesadas"
+                        "description": "Imagen encontrada",
+                        "content": {
+                            "image/jpeg": {}
+                        }
+                    },
+                    "404": {
+                        "description": "Ticket o imagen no encontrada"
                     }
                 },
                 "security": [

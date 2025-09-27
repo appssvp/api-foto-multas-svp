@@ -13,8 +13,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // 2. Endpoint Detecciones
     Route::post('/detecciones', [FotomultasController::class, 'detecciones']);
     
-    // 3. Endpoint Imágenes  
-    Route::post('/imagenes', [FotomultasController::class, 'imagenes']);
+    // 3. Endpoint Imágenes simplificado
+    Route::get('/imagenes/{ticketId}', [FotomultasController::class, 'imagenes']);
     
     // Logout
     Route::post('/auth/logout', [FotomultasController::class, 'logout']);

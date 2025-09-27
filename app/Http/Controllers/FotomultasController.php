@@ -130,17 +130,113 @@ class FotomultasController extends Controller
     }
 
     /**
-     * @OA\Post(
-     *     path="/api/imagenes",
+     * @OA\Get(
+     *     path="/api/imagenes/{ticketId}",
      *     tags={"Imágenes"},
-     *     summary="Endpoint de imágenes",
+     *     summary="Obtener imágenes de fotomulta",
      *     security={{"bearerAuth":{}}},
-     *     @OA\Response(response=200, description="Imágenes procesadas")
+     *     @OA\Parameter(
+     *         name="ticketId",
+     *         in="path",
+     *         required=true,
+     *         description="ID del ticket",
+     *         @OA\Schema(type="string")
+     *     ),
+     *     @OA\Parameter(
+     *         name="img",
+     *         in="query",
+     *         required=false,
+     *         description="Número de imagen (1, 2, o 3). Por defecto: 1",
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Imagen encontrada",
+     *         @OA\MediaType(mediaType="image/jpeg")
+     *     ),
+     *     @OA\Response(response=404, description="Ticket o imagen no encontrada")
      * )
      */
-    public function imagenes(Request $request): JsonResponse
+    public function imagenes(Request $request, $ticketId)
     {
-        return response()->json(['message' => 'Método de imágenes']);
+        // Buscar la fotomulta por ticket_id
+        $fotomulta = Fotomulta::where('ticket_id', $ticketId)->first();
+
+        if (!$fotomulta) {
+            return response()->json(['error' => 'Ticket no encontrado'], 404);
+        }
+
+        // Determinar qué imagen mostrar (por defecto img1)
+        $imgNumber = $request->query('img', 1);
+        $imgField = 'img' . $imgNumber;
+
+        if (!in_array($imgNumber, [1, 2, 3]) || !$fotomulta->$imgField) {
+            return response()->json(['error' => 'Imagen no encontrada'], 404);
+        }
+
+        $imageName = $fotomulta->$imgField;
+
+        // Descargar imagen desde la API externa (basado en tu método descargarImagenV4)
+        return $this->descargarImagenDesdeAPI($ticketId, $imageName);
+    }
+
+    /**
+     * Descarga imagen desde la API externa (adaptado de FotomultasV2Controller)
+     */
+    private function descargarImagenDesdeAPI($ticketId, $fileName)
+    {
+        $apiKey = "wdK23RTWnG4XvvlxNDN2K5RfJNHrHSUY7cBNB86Y";
+        $metaUrl = "https://api.streetsoncloud.com/v4/ticket-image/{$ticketId}/{$fileName}";
+
+        try {
+            // 1) Obtener la URL real de la imagen
+            $meta = \Illuminate\Support\Facades\Http::withHeaders([
+                'x-api-key' => $apiKey,
+                'X-Requested-With' => 'XMLHttpRequest',
+            ])->timeout(30)->get($metaUrl);
+
+            if ($meta->failed()) {
+                return response()->json(['error' => 'No se pudo obtener URL de imagen'], 502);
+            }
+
+            $imageUrl = data_get($meta->json(), 'imageUrl');
+            if (!$imageUrl) {
+                return response()->json(['error' => 'URL no disponible'], 404);
+            }
+
+            // 2) Descargar imagen binaria
+            $img = \Illuminate\Support\Facades\Http::timeout(60)->get($imageUrl);
+            if ($img->failed()) {
+                return response()->json(['error' => 'No se pudo descargar la imagen'], 502);
+            }
+
+            $mime = $img->header('Content-Type') ?? $this->mimeFromExt($fileName);
+
+            // 3) Retornar imagen directamente
+            return response($img->body(), 200)
+                ->header('Content-Type', $mime)
+                ->header('Cache-Control', 'public, max-age=3600'); // Cache por 1 hora
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Error al procesar la imagen: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Determina el tipo MIME por extensión de archivo
+     */
+    private function mimeFromExt($fileName)
+    {
+        $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        return match ($ext) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png'          => 'image/png',
+            'bmp'          => 'image/bmp',
+            'gif'          => 'image/gif',
+            default        => 'application/octet-stream',
+        };
     }
 
     /**
