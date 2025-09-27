@@ -80,11 +80,60 @@
                 "tags": [
                     "Detecciones"
                 ],
-                "summary": "Endpoint de detecciones",
+                "summary": "Obtener detecciones de fotomultas",
                 "operationId": "bab8430ca80f8325fd9e196e49b3be78",
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "limit": {
+                                        "description": "Número de registros a retornar",
+                                        "type": "integer",
+                                        "example": 50
+                                    },
+                                    "offset": {
+                                        "description": "Offset para paginación",
+                                        "type": "integer",
+                                        "example": 0
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
                 "responses": {
                     "200": {
-                        "description": "Detecciones procesadas"
+                        "description": "Lista de detecciones",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "properties": {
+                                            "recordId": {
+                                                "type": "string"
+                                            },
+                                            "plateNum": {
+                                                "type": "string"
+                                            },
+                                            "carSpeed": {
+                                                "type": "integer"
+                                            },
+                                            "createTime": {
+                                                "type": "string"
+                                            },
+                                            "channelInfoVO": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "type": "object"
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 "security": [
