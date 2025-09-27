@@ -1,0 +1,3 @@
+comando seeders
+--para crear usuario inicial
+php artisan db:seed --class=UserSeeder
