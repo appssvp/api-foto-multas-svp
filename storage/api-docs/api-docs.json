@@ -88,15 +88,17 @@
                         "application/json": {
                             "schema": {
                                 "properties": {
-                                    "limit": {
-                                        "description": "Número de registros a retornar",
-                                        "type": "integer",
-                                        "example": 50
+                                    "fecha_inicio": {
+                                        "description": "Fecha y hora de inicio",
+                                        "type": "string",
+                                        "format": "datetime",
+                                        "example": "2025-09-06 00:00:00"
                                     },
-                                    "offset": {
-                                        "description": "Offset para paginación",
-                                        "type": "integer",
-                                        "example": 0
+                                    "fecha_fin": {
+                                        "description": "Fecha y hora de fin",
+                                        "type": "string",
+                                        "format": "datetime",
+                                        "example": "2025-09-06 23:59:59"
                                     }
                                 },
                                 "type": "object"
@@ -106,7 +108,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Lista de detecciones",
+                        "description": "Lista de detecciones (máximo 1000 registros)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -134,6 +136,12 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Error de validación"
+                    },
+                    "401": {
+                        "description": "No autorizado"
                     }
                 },
                 "security": [
@@ -143,31 +151,22 @@
                 ]
             }
         },
-        "/api/imagenes/{ticketId}": {
+        "/api/imagenes/{imgUrl}": {
             "get": {
                 "tags": [
                     "Imágenes"
                 ],
-                "summary": "Obtener imágenes de fotomulta",
-                "operationId": "8878c16dec5252503065d51cf0c36f93",
+                "summary": "Obtener imagen de fotomulta por URL",
+                "operationId": "454670a2dd3461ee8d224cf515a6a436",
                 "parameters": [
                     {
-                        "name": "ticketId",
+                        "name": "imgUrl",
                         "in": "path",
-                        "description": "ID del ticket",
+                        "description": "URL completa de la imagen (formato: recordId/radarId/ticketId/filename)",
                         "required": true,
                         "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "img",
-                        "in": "query",
-                        "description": "Número de imagen (1, 2, o 3). Por defecto: 1",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 1
+                            "type": "string",
+                            "example": "53a13cba07c471ae1d8e7a6cd628b5cd/47548/135733046/full_3070_3941.jpg"
                         }
                     }
                 ],
@@ -178,8 +177,11 @@
                             "image/jpeg": {}
                         }
                     },
+                    "400": {
+                        "description": "URL de imagen inválida"
+                    },
                     "404": {
-                        "description": "Ticket o imagen no encontrada"
+                        "description": "Imagen no encontrada"
                     }
                 },
                 "security": [

@@ -92,13 +92,13 @@ class FotomultasController extends Controller
      *     @OA\RequestBody(
      *         required=false,
      *         @OA\JsonContent(
-     *             @OA\Property(property="limit", type="integer", example=50, description="Número de registros a retornar"),
-     *             @OA\Property(property="offset", type="integer", example=0, description="Offset para paginación")
+     *             @OA\Property(property="fecha_inicio", type="string", format="datetime", example="2025-09-06 00:00:00", description="Fecha y hora de inicio"),
+     *             @OA\Property(property="fecha_fin", type="string", format="datetime", example="2025-09-06 23:59:59", description="Fecha y hora de fin")
      *         )
      *     ),
      *     @OA\Response(
      *         response=200,
-     *         description="Lista de detecciones",
+     *         description="Lista de detecciones (máximo 1000 registros)",
      *         @OA\JsonContent(
      *             type="array",
      *             @OA\Items(
@@ -109,17 +109,48 @@ class FotomultasController extends Controller
      *                 @OA\Property(property="channelInfoVO", type="object")
      *             )
      *         )
-     *     )
+     *     ),
+     *     @OA\Response(response=422, description="Error de validación"),
+     *     @OA\Response(response=401, description="No autorizado")
      * )
      */
     public function detecciones(Request $request): JsonResponse
     {
-        $limit = $request->input('limit', 50);
-        $offset = $request->input('offset', 0);
+        // Validar solo los parámetros de fecha
+        $validated = $request->validate([
+            'fecha_inicio' => 'nullable|date_format:Y-m-d H:i:s',
+            'fecha_fin' => 'nullable|date_format:Y-m-d H:i:s'
+        ]);
 
-        $fotomultas = Fotomulta::orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->offset($offset)
+        $fechaInicio = $validated['fecha_inicio'] ?? null;
+        $fechaFin = $validated['fecha_fin'] ?? null;
+
+        // Validar que fecha_inicio sea menor que fecha_fin
+        if ($fechaInicio && $fechaFin && $fechaInicio > $fechaFin) {
+            return response()->json([
+                'error' => 'La fecha de inicio no puede ser mayor que la fecha de fin'
+            ], 422);
+        }
+
+        // Construir query base
+        $query = Fotomulta::query();
+
+        // Aplicar filtros de fecha si están presentes
+        if ($fechaInicio) {
+            $query->where(function ($q) use ($fechaInicio) {
+                $q->whereRaw("CONCAT(fecha_infraccion, ' ', COALESCE(hora_infraccion, '00:00:00')) >= ?", [$fechaInicio]);
+            });
+        }
+
+        if ($fechaFin) {
+            $query->where(function ($q) use ($fechaFin) {
+                $q->whereRaw("CONCAT(fecha_infraccion, ' ', COALESCE(hora_infraccion, '23:59:59')) <= ?", [$fechaFin]);
+            });
+        }
+
+        // Ejecutar query con límite fijo de 1000 registros
+        $fotomultas = $query->orderByRaw("CONCAT(fecha_infraccion, ' ', COALESCE(hora_infraccion, '00:00:00')) DESC")
+            ->limit(1000)
             ->get();
 
         $detecciones = $fotomultas->map(function ($fotomulta) {
@@ -131,62 +162,165 @@ class FotomultasController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/imagenes/{ticketId}",
+     *     path="/api/imagenes/{imgUrl}",
      *     tags={"Imágenes"},
-     *     summary="Obtener imágenes de fotomulta",
+     *     summary="Obtener imagen de fotomulta por URL",
      *     security={{"bearerAuth":{}}},
      *     @OA\Parameter(
-     *         name="ticketId",
+     *         name="imgUrl",
      *         in="path",
      *         required=true,
-     *         description="ID del ticket",
-     *         @OA\Schema(type="string")
-     *     ),
-     *     @OA\Parameter(
-     *         name="img",
-     *         in="query",
-     *         required=false,
-     *         description="Número de imagen (1, 2, o 3). Por defecto: 1",
-     *         @OA\Schema(type="integer", example=1)
+     *         description="URL completa de la imagen (formato: recordId/radarId/ticketId/filename)",
+     *         @OA\Schema(type="string", example="53a13cba07c471ae1d8e7a6cd628b5cd/47548/135733046/full_3070_3941.jpg")
      *     ),
      *     @OA\Response(
      *         response=200,
      *         description="Imagen encontrada",
      *         @OA\MediaType(mediaType="image/jpeg")
      *     ),
-     *     @OA\Response(response=404, description="Ticket o imagen no encontrada")
+     *     @OA\Response(response=400, description="URL de imagen inválida"),
+     *     @OA\Response(response=404, description="Imagen no encontrada")
      * )
      */
-    public function imagenes(Request $request, $ticketId)
+    public function imagenes(Request $request, $imgUrl)
     {
-        // Buscar la fotomulta por ticket_id
+        // Decodificar URL si viene encoded
+        $imgUrl = urldecode($imgUrl);
+        
+        // Validar formato de la URL: recordId/radarId/ticketId/filename
+        if (!preg_match('/^([a-f0-9]{32})\/(\d{5})\/(\d+)\/([a-zA-Z0-9._-]+\.(jpg|jpeg|png|gif|bmp))$/i', $imgUrl, $matches)) {
+            return response()->json(['error' => 'Formato de URL de imagen inválido'], 400);
+        }
+
+        [, $recordId, $radarId, $ticketId, $fileName] = $matches;
+
+        // Validar que el ticketId existe en la base de datos
         $fotomulta = Fotomulta::where('ticket_id', $ticketId)->first();
 
         if (!$fotomulta) {
             return response()->json(['error' => 'Ticket no encontrado'], 404);
         }
 
-        // Determinar qué imagen mostrar (por defecto img1)
-        $imgNumber = $request->query('img', 1);
-        $imgField = 'img' . $imgNumber;
-
-        if (!in_array($imgNumber, [1, 2, 3]) || !$fotomulta->$imgField) {
-            return response()->json(['error' => 'Imagen no encontrada'], 404);
+        // Verificar que la imagen existe en alguna de las columnas img1, img2, img3
+        $imgFields = ['img1', 'img2', 'img3'];
+        $imagenEncontrada = false;
+        
+        foreach ($imgFields as $field) {
+            if ($fotomulta->$field === $fileName) {
+                $imagenEncontrada = true;
+                break;
+            }
         }
 
-        $imageName = $fotomulta->$imgField;
+        if (!$imagenEncontrada) {
+            return response()->json(['error' => 'Imagen no encontrada en el ticket'], 404);
+        }
 
-        // Descargar imagen desde la API externa (basado en tu método descargarImagenV4)
-        return $this->descargarImagenDesdeAPI($ticketId, $imageName);
+        // Descargar imagen desde la API externa
+        return $this->descargarImagenDesdeAPI($ticketId, $fileName);
     }
 
     /**
-     * Descarga imagen desde la API externa (adaptado de FotomultasV2Controller)
+     * @OA\Post(
+     *     path="/api/auth/logout",
+     *     tags={"Auth"},
+     *     summary="Cerrar sesión",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Logout exitoso")
+     * )
+     */
+    public function logout(Request $request): JsonResponse
+    {
+        return response()->json(['message' => 'Logout exitoso']);
+    }
+
+    /**
+     * Mapea una fotomulta al formato de detección requerido
+     */
+    private function mapFotomultaToDeteccion($fotomulta): array
+    {
+        // Generar recordId siempre como cadena aleatoria de 32 caracteres hexadecimales
+        $recordId = bin2hex(random_bytes(16));
+
+        // Formatear createTime al formato requerido
+        $createTime = null;
+        if ($fotomulta->fecha_infraccion && $fotomulta->hora_infraccion) {
+            $datetime = Carbon::parse($fotomulta->fecha_infraccion . ' ' . $fotomulta->hora_infraccion);
+            $createTime = $datetime->format('Ymd\THis\Z');
+        }
+
+        // Usar directamente el valor de la columna color
+        $carColor = $fotomulta->color;
+
+        // Construir channelInfoVO
+        $channelMappings = $this->getChannelMappings($fotomulta->localida);
+        
+        $channelInfoVO = [
+            'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
+            'state' => 1,
+            'gpsX' => $fotomulta->geom_lat ? (float) $fotomulta->geom_lat : null,
+            'gpsY' => $fotomulta->geom_lng ? (float) $fotomulta->geom_lng : null,
+            'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
+        ];
+
+        // Construir imgList con rutas completas
+        $imgList = [];
+        $imgFields = ['img1', 'img2', 'img3'];
+        $radarId = $this->getRadarId($fotomulta->localida);
+        
+        foreach ($imgFields as $index => $field) {
+            if ($fotomulta->$field) {
+                // Construir la ruta: token_generado/id_radar/id_ticket/imagen
+                $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
+                
+                $imgList[] = [
+                    'imgUrl' => $imgUrl,
+                    'imgIdx' => $index + 1,
+                    'imgType' => $index === 2 ? 2 : 0,
+                ];
+            }
+        }
+
+        return [
+            'carWayCode' => 0,
+            'ticketUrl' => null,
+            'plateType' => 0,
+            'carDirect' => 0,
+            'dealStatus' => 0,
+            'plateNum' => $fotomulta->placa,
+            'carSpeed' => $fotomulta->velocidad_detectada ? (int) $fotomulta->velocidad_detectada : null,
+            'vehicleManufacturer' => 0,
+            'recordId' => $recordId,
+            'recType' => 1,
+            'snapHeadstock' => 0,
+            'carColor' => $carColor,
+            'carType' => $fotomulta->tipo_vehiculo,
+            'intervalCode' => null,
+            'createTime' => $createTime,
+            'channelInfoVO' => $channelInfoVO,
+            'stopTime' => null,
+            'intervalName' => null,
+            'id' => $fotomulta->ticket_id,
+            'capStartTime' => $fotomulta->fecha_infraccion,
+            'capTime' => $createTime,
+            'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
+            'imgList' => $imgList,
+        ];
+    }
+
+    /**
+     * Descarga imagen desde la API externa
      */
     private function descargarImagenDesdeAPI($ticketId, $fileName)
     {
-        $apiKey = "wdK23RTWnG4XvvlxNDN2K5RfJNHrHSUY7cBNB86Y";
-        $metaUrl = "https://api.streetsoncloud.com/v4/ticket-image/{$ticketId}/{$fileName}";
+        $apiKey = config('services.streetsoncloud.api_key');
+        $baseUrl = config('services.streetsoncloud.api_url');
+        
+        if (!$apiKey) {
+            return response()->json(['error' => 'API key no configurada'], 500);
+        }
+        
+        $metaUrl = "{$baseUrl}/ticket-image/{$ticketId}/{$fileName}";
 
         try {
             // 1) Obtener la URL real de la imagen
@@ -215,7 +349,7 @@ class FotomultasController extends Controller
             // 3) Retornar imagen directamente
             return response($img->body(), 200)
                 ->header('Content-Type', $mime)
-                ->header('Cache-Control', 'public, max-age=3600'); // Cache por 1 hora
+                ->header('Cache-Control', 'public, max-age=3600');
 
         } catch (\Exception $e) {
             return response()->json([
@@ -237,94 +371,6 @@ class FotomultasController extends Controller
             'gif'          => 'image/gif',
             default        => 'application/octet-stream',
         };
-    }
-
-    /**
-     * @OA\Post(
-     *     path="/api/auth/logout",
-     *     tags={"Auth"},
-     *     summary="Cerrar sesión",
-     *     security={{"bearerAuth":{}}},
-     *     @OA\Response(response=200, description="Logout exitoso")
-     * )
-     */
-    public function logout(Request $request): JsonResponse
-    {
-        return response()->json(['message' => 'Logout exitoso']);
-    }
-
-    /**
-     * Mapea una fotomulta al formato de detección requerido
-     */
-    private function mapFotomultaToDeteccion($fotomulta): array
-    {
-        // Generar recordId siempre como cadena aleatoria de 32 caracteres hexadecimales
-        $recordId = bin2hex(random_bytes(16)); // Genera 32 caracteres hexadecimales aleatorios
-
-        // Formatear createTime al formato requerido
-        $createTime = null;
-        if ($fotomulta->fecha_infraccion && $fotomulta->hora_infraccion) {
-            $datetime = Carbon::parse($fotomulta->fecha_infraccion . ' ' . $fotomulta->hora_infraccion);
-            $createTime = $datetime->format('Ymd\THis\Z');
-        }
-
-        // Usar directamente el valor de la columna color
-        $carColor = $fotomulta->color;
-
-        // Construir channelInfoVO
-        $channelMappings = $this->getChannelMappings($fotomulta->localida);
-        
-        $channelInfoVO = [
-            'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
-            'state' => 1, // Asumimos activo
-            'gpsX' => $fotomulta->geom_lat ? (float) $fotomulta->geom_lat : null,
-            'gpsY' => $fotomulta->geom_lng ? (float) $fotomulta->geom_lng : null,
-            'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
-        ];
-
-        // Construir imgList con rutas completas
-        $imgList = [];
-        $imgFields = ['img1', 'img2', 'img3'];
-        $radarId = $this->getRadarId($fotomulta->localida);
-        
-        foreach ($imgFields as $index => $field) {
-            if ($fotomulta->$field) {
-                // Construir la ruta: token_generado/id_radar/id_ticket/imagen
-                $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
-                
-                $imgList[] = [
-                    'imgUrl' => $imgUrl,
-                    'imgIdx' => $index + 1,
-                    'imgType' => $index === 2 ? 2 : 0, // El tercer elemento tiene tipo 2
-                ];
-            }
-        }
-
-        return [
-            'carWayCode' => null,
-            'ticketUrl' => null,
-            'plateType' => 0, // Cambiado de null a 0
-            'carDirect' => 0, // Cambiado de null a 0
-            'dealStatus' => 0, // Cambiado de null a 0
-            'plateNum' => $fotomulta->placa,
-            'carSpeed' => $fotomulta->velocidad_detectada ? (int) $fotomulta->velocidad_detectada : null,
-            'vehicleManufacturer' => $fotomulta->marca,
-            'recordId' => $recordId,
-            'recType' => 1,
-            'snapHeadstock' => 0, // Cambiado de null a 0
-            'carColor' => $carColor,
-            'carType' => $fotomulta->tipo_vehiculo,
-            'intervalCode' => null,
-            'createTime' => $createTime,
-            'channelInfoVO' => $channelInfoVO,
-            'stopTime' => null,
-            'intervalName' => null,
-            'id' => $fotomulta->ticket_id, // Usar ticket_id en lugar de id
-            'capStartTime' => $fotomulta->fecha_infraccion,
-            'capTime' => $createTime,
-            'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
-            'imgList' => $imgList,
-        ];
     }
 
     /**
@@ -362,29 +408,5 @@ class FotomultasController extends Controller
         ];
 
         return $radarIds[$localidad] ?? null;
-    }
-
-    /**
-     * Mapea nombre de color a número
-     */
-    private function mapColorToNumber(?string $color): ?int
-    {
-        if (!$color) return null;
-
-        $colorMap = [
-            'blanco' => 1,
-            'gris' => 2,
-            'negro' => 3,
-            'azul' => 4,
-            'rojo' => 5,
-            'verde' => 6,
-            'amarillo' => 7,
-            'cafe' => 8,
-            'naranja' => 9,
-            'plata' => 10,
-        ];
-
-        $colorLower = strtolower(trim($color));
-        return $colorMap[$colorLower] ?? null;
     }
 }
