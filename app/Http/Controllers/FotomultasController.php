@@ -8,9 +8,12 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use App\Models\Fotomulta;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Carbon\Carbon;
+use App\Jobs\ProcessImageDownload;
 
 /**
  * @OA\Info(
@@ -67,14 +70,14 @@ class FotomultasController extends Controller
 
         // Sanitizar email
         $email = filter_var(trim($validated['email']), FILTER_SANITIZE_EMAIL);
-
+        
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             Log::channel('fotomultas')->warning('Login attempt with invalid email', [
                 'email' => $email,
                 'ip' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
-
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Email inválido'
@@ -151,12 +154,11 @@ class FotomultasController extends Controller
     public function detecciones(Request $request): JsonResponse
     {
         $startTime = microtime(true);
-
+        
         // Validar solo los parámetros de fecha
         $validated = $request->validate([
-            'fecha_inicio' => 'nullable|date_format:Y-m-d H:i:s|after:2020-01-01|before:' . now()->addDay(),
-            'fecha_fin' => 'nullable|date_format:Y-m-d H:i:s|after:fecha_inicio|before:' . now()->addDay(),
-
+            'fecha_inicio' => 'nullable|date_format:Y-m-d H:i:s',
+            'fecha_fin' => 'nullable|date_format:Y-m-d H:i:s'
         ]);
 
         $fechaInicio = $validated['fecha_inicio'] ?? null;
@@ -208,6 +210,9 @@ class FotomultasController extends Controller
             return $this->mapFotomultaToDeteccion($fotomulta);
         });
 
+        // 🚀 CAMBIO PRINCIPAL: Precargar TODAS las imágenes automáticamente en background
+        $this->precacheAllImagesFromDetections($detecciones);
+
         $endTime = microtime(true);
         $responseTime = round(($endTime - $startTime) * 1000, 2);
 
@@ -246,9 +251,18 @@ class FotomultasController extends Controller
      */
     public function imagenes(Request $request, $imgUrl)
     {
+        $startTime = microtime(true);
+        
         // Decodificar URL si viene encoded
         $imgUrl = urldecode($imgUrl);
-
+        
+        Log::channel('fotomultas')->info('Image request received', [
+            'user_id' => Auth::id(),
+            'image_url' => $imgUrl,
+            'ip' => $request->ip(),
+            'timestamp' => now()->toISOString()
+        ]);
+        
         // Validar formato de la URL: recordId/radarId/ticketId/filename
         if (!preg_match('/^([a-f0-9]{32})\/(\d{5})\/(\d+)\/([a-zA-Z0-9._-]+\.(jpg|jpeg|png|gif|bmp))$/i', $imgUrl, $matches)) {
             return response()->json(['error' => 'Formato de URL de imagen inválido'], 400);
@@ -266,7 +280,7 @@ class FotomultasController extends Controller
         // Verificar que la imagen existe en alguna de las columnas img1, img2, img3
         $imgFields = ['img1', 'img2', 'img3'];
         $imagenEncontrada = false;
-
+        
         foreach ($imgFields as $field) {
             if ($fotomulta->$field === $fileName) {
                 $imagenEncontrada = true;
@@ -278,8 +292,8 @@ class FotomultasController extends Controller
             return response()->json(['error' => 'Imagen no encontrada en el ticket'], 404);
         }
 
-        // Descargar imagen desde la API externa
-        return $this->descargarImagenDesdeAPI($ticketId, $fileName);
+        // 🚀 CAMBIO: Usar cache optimizado para servir imagen
+        return $this->serveImageFromCache($imgUrl, $ticketId, $fileName, $startTime);
     }
 
     /**
@@ -291,6 +305,11 @@ class FotomultasController extends Controller
      *     @OA\Response(response=200, description="Logout exitoso")
      * )
      */
+    public function logout(Request $request): JsonResponse
+    {
+        return response()->json(['message' => 'Logout exitoso']);
+    }
+
     /**
      * @OA\Get(
      *     path="/api/health",
@@ -314,10 +333,10 @@ class FotomultasController extends Controller
         try {
             // Verificar conexión a base de datos
             DB::connection()->getPdo();
-
+            
             // Verificar tabla principal con una consulta simple
             $count = Fotomulta::count();
-
+            
             return response()->json([
                 'status' => 'ok',
                 'database' => 'connected',
@@ -332,6 +351,86 @@ class FotomultasController extends Controller
                 'timestamp' => now()->toISOString()
             ], 500);
         }
+    }
+
+    /**
+     * 🆕 NUEVO: Precargar TODAS las imágenes de las detecciones automáticamente
+     */
+    private function precacheAllImagesFromDetections($detecciones)
+    {
+        $startTime = microtime(true);
+        $totalImages = 0;
+
+        foreach ($detecciones as $deteccion) {
+            // Procesar todas las imágenes del imgList
+            if (isset($deteccion['imgList']) && is_array($deteccion['imgList'])) {
+                foreach ($deteccion['imgList'] as $imagen) {
+                    if (isset($imagen['imgUrl'])) {
+                        $cacheKey = 'fotomulta_image_' . md5($imagen['imgUrl']);
+                        
+                        // Solo procesar si no está en cache
+                        if (!Cache::has($cacheKey)) {
+                            ProcessImageDownload::dispatch($imagen['imgUrl'])
+                                ->onQueue('images')
+                                ->delay(now()->addSeconds(rand(1, 10))); // Distribuir carga
+                            
+                            $totalImages++;
+                        }
+                    }
+                }
+            }
+        }
+
+        $endTime = microtime(true);
+        $responseTime = round(($endTime - $startTime) * 1000, 2);
+
+        Log::channel('fotomultas')->info('Background image processing initiated', [
+            'user_id' => Auth::id(),
+            'detections_processed' => count($detecciones),
+            'total_images_queued' => $totalImages,
+            'queue_time_ms' => $responseTime,
+            'timestamp' => now()->toISOString()
+        ]);
+    }
+
+    /**
+     * 🆕 NUEVO: Servir imagen desde cache optimizado
+     */
+    private function serveImageFromCache($imgUrl, $ticketId, $fileName, $startTime)
+    {
+        $cacheKey = 'fotomulta_image_' . md5($imgUrl);
+        
+        // Verificar si está en cache
+        if (Cache::has($cacheKey)) {
+            $imageData = Cache::get($cacheKey);
+            $mimeType = $this->mimeFromExt($fileName);
+            
+            $endTime = microtime(true);
+            $responseTime = round(($endTime - $startTime) * 1000, 2);
+            
+            Log::channel('fotomultas')->info('Image served from cache', [
+                'user_id' => Auth::id(),
+                'image_url' => $imgUrl,
+                'response_time_ms' => $responseTime,
+                'cache_hit' => true,
+                'image_size_kb' => round(strlen(base64_decode($imageData)) / 1024, 2),
+                'timestamp' => now()->toISOString()
+            ]);
+            
+            return response(base64_decode($imageData), 200)
+                ->header('Content-Type', $mimeType)
+                ->header('Cache-Control', 'public, max-age=21600')
+                ->header('X-Cache-Status', 'HIT');
+        }
+
+        // Si no está en cache, descargar directamente (fallback)
+        Log::channel('fotomultas')->warning('Image not in cache, falling back to direct download', [
+            'user_id' => Auth::id(),
+            'image_url' => $imgUrl,
+            'cache_key' => $cacheKey
+        ]);
+
+        return $this->descargarImagenDesdeAPI($ticketId, $fileName);
     }
 
     /**
@@ -354,7 +453,7 @@ class FotomultasController extends Controller
 
         // Construir channelInfoVO
         $channelMappings = $this->getChannelMappings($fotomulta->localida);
-
+        
         $channelInfoVO = [
             'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
             'state' => 1,
@@ -367,12 +466,12 @@ class FotomultasController extends Controller
         $imgList = [];
         $imgFields = ['img1', 'img2', 'img3'];
         $radarId = $this->getRadarId($fotomulta->localida);
-
+        
         foreach ($imgFields as $index => $field) {
             if ($fotomulta->$field) {
                 // Construir la ruta: token_generado/id_radar/id_ticket/imagen
                 $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
-
+                
                 $imgList[] = [
                     'imgUrl' => $imgUrl,
                     'imgIdx' => $index + 1,
@@ -408,23 +507,20 @@ class FotomultasController extends Controller
         ];
     }
 
-    /**
-     * Descarga imagen desde la API externa
-     */
     private function descargarImagenDesdeAPI($ticketId, $fileName)
     {
         $apiKey = config('services.streetsoncloud.api_key');
         $baseUrl = config('services.streetsoncloud.api_url');
-
+        
         if (!$apiKey) {
             return response()->json(['error' => 'API key no configurada'], 500);
         }
-
+        
         $metaUrl = "{$baseUrl}/ticket-image/{$ticketId}/{$fileName}";
 
         try {
             // 1) Obtener la URL real de la imagen
-            $meta = \Illuminate\Support\Facades\Http::withHeaders([
+            $meta = Http::withHeaders([
                 'x-api-key' => $apiKey,
                 'X-Requested-With' => 'XMLHttpRequest',
             ])->timeout(30)->get($metaUrl);
@@ -439,7 +535,7 @@ class FotomultasController extends Controller
             }
 
             // 2) Descargar imagen binaria
-            $img = \Illuminate\Support\Facades\Http::timeout(60)->get($imageUrl);
+            $img = Http::timeout(60)->get($imageUrl);
             if ($img->failed()) {
                 return response()->json(['error' => 'No se pudo descargar la imagen'], 502);
             }
@@ -449,8 +545,16 @@ class FotomultasController extends Controller
             // 3) Retornar imagen directamente
             return response($img->body(), 200)
                 ->header('Content-Type', $mime)
-                ->header('Cache-Control', 'public, max-age=3600');
+                ->header('Cache-Control', 'public, max-age=3600')
+                ->header('X-Cache-Status', 'MISS');
+
         } catch (\Exception $e) {
+            Log::channel('fotomultas')->error('Direct image download failed', [
+                'ticket_id' => $ticketId,
+                'filename' => $fileName,
+                'error' => $e->getMessage()
+            ]);
+            
             return response()->json([
                 'error' => 'Error al procesar la imagen: ' . $e->getMessage()
             ], 500);

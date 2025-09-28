@@ -37,11 +37,19 @@ return [
         'database' => [
             'driver' => 'database',
             'connection' => env('DB_QUEUE_CONNECTION'),
-            'table' => env('DB_QUEUE_TABLE', 'jobs'),
-            'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            'table' => 'jobs',
+            'queue' => 'default',
+            'retry_after' => 90,
             'after_commit' => false,
         ],
+
+            'images' => [
+        'driver' => 'database',
+        'table' => 'jobs',
+        'queue' => 'images',
+        'retry_after' => 180, // 3 minutos para imágenes
+        'after_commit' => false,
+    ],
 
         'beanstalkd' => [
             'driver' => 'beanstalkd',

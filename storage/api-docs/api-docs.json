@@ -191,6 +191,25 @@
                 ]
             }
         },
+        "/api/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Cerrar sesión",
+                "operationId": "01ad23fe04a1afe6b0ee09eb419c4345",
+                "responses": {
+                    "200": {
+                        "description": "Logout exitoso"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/health": {
             "get": {
                 "tags": [
