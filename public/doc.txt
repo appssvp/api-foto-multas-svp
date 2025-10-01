@@ -1,3 +1,15 @@
 comando seeders
 --para crear usuario inicial
+
+
 php artisan db:seed --class=UserSeeder
+
+{
+  "email": "admin@fotomultas.com",
+  "password": "password123"
+}
+
+
+
+comando para actualizar swagger
+php artisan l5-swagger:generate

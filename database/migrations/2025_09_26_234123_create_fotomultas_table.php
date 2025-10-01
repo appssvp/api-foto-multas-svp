@@ -10,15 +10,11 @@ return new class extends Migration
     {
         Schema::create('fotomultas', function (Blueprint $table) {
             $table->id();
-            // --- NUEVAS COLUMNAS ---
             $table->unsignedBigInteger('ticket_id')->unique()->nullable()->comment('ID del ticket en la API externa');
             $table->string('localida')->nullable()->comment('Nombre de la ubicación/cámara de la API');
-            // USUARIO No
             $table->unsignedBigInteger('usuario_no')->nullable()->index();
-            // FOLIO / PLACA
             $table->string('folio')->nullable()->unique();
             $table->string('placa', 20)->nullable()->index();
-            // ... el resto de tus columnas ...
             $table->date('fecha_infraccion')->nullable();
             $table->time('hora_infraccion')->nullable();
             $table->string('articulo', 50)->nullable();
@@ -36,6 +32,7 @@ return new class extends Migration
             $table->string('nombre_radar')->nullable();
             $table->decimal('geom_lat', 10, 7)->nullable();
             $table->decimal('geom_lng', 10, 7)->nullable();
+            $table->integer('carril')->nullable()->comment('Número de carril detectado'); 
             $table->string('tipo_vehiculo')->nullable();
             $table->boolean('servicio_publico')->nullable();
             $table->string('marca', 60)->nullable();

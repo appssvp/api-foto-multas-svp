@@ -70,14 +70,14 @@ class FotomultasController extends Controller
 
         // Sanitizar email
         $email = filter_var(trim($validated['email']), FILTER_SANITIZE_EMAIL);
-        
+
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             Log::channel('fotomultas')->warning('Login attempt with invalid email', [
                 'email' => $email,
                 'ip' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Email inválido'
@@ -154,7 +154,7 @@ class FotomultasController extends Controller
     public function detecciones(Request $request): JsonResponse
     {
         $startTime = microtime(true);
-        
+
         // Validar solo los parámetros de fecha
         $validated = $request->validate([
             'fecha_inicio' => 'nullable|date_format:Y-m-d H:i:s',
@@ -252,17 +252,17 @@ class FotomultasController extends Controller
     public function imagenes(Request $request, $imgUrl)
     {
         $startTime = microtime(true);
-        
+
         // Decodificar URL si viene encoded
         $imgUrl = urldecode($imgUrl);
-        
+
         Log::channel('fotomultas')->info('Image request received', [
             'user_id' => Auth::id(),
             'image_url' => $imgUrl,
             'ip' => $request->ip(),
             'timestamp' => now()->toISOString()
         ]);
-        
+
         // Validar formato de la URL: recordId/radarId/ticketId/filename
         if (!preg_match('/^([a-f0-9]{32})\/(\d{5})\/(\d+)\/([a-zA-Z0-9._-]+\.(jpg|jpeg|png|gif|bmp))$/i', $imgUrl, $matches)) {
             return response()->json(['error' => 'Formato de URL de imagen inválido'], 400);
@@ -280,7 +280,7 @@ class FotomultasController extends Controller
         // Verificar que la imagen existe en alguna de las columnas img1, img2, img3
         $imgFields = ['img1', 'img2', 'img3'];
         $imagenEncontrada = false;
-        
+
         foreach ($imgFields as $field) {
             if ($fotomulta->$field === $fileName) {
                 $imagenEncontrada = true;
@@ -333,10 +333,10 @@ class FotomultasController extends Controller
         try {
             // Verificar conexión a base de datos
             DB::connection()->getPdo();
-            
+
             // Verificar tabla principal con una consulta simple
             $count = Fotomulta::count();
-            
+
             return response()->json([
                 'status' => 'ok',
                 'database' => 'connected',
@@ -367,13 +367,13 @@ class FotomultasController extends Controller
                 foreach ($deteccion['imgList'] as $imagen) {
                     if (isset($imagen['imgUrl'])) {
                         $cacheKey = 'fotomulta_image_' . md5($imagen['imgUrl']);
-                        
+
                         // Solo procesar si no está en cache
                         if (!Cache::has($cacheKey)) {
                             ProcessImageDownload::dispatch($imagen['imgUrl'])
                                 ->onQueue('images')
                                 ->delay(now()->addSeconds(rand(1, 10))); // Distribuir carga
-                            
+
                             $totalImages++;
                         }
                     }
@@ -399,15 +399,15 @@ class FotomultasController extends Controller
     private function serveImageFromCache($imgUrl, $ticketId, $fileName, $startTime)
     {
         $cacheKey = 'fotomulta_image_' . md5($imgUrl);
-        
+
         // Verificar si está en cache
         if (Cache::has($cacheKey)) {
             $imageData = Cache::get($cacheKey);
             $mimeType = $this->mimeFromExt($fileName);
-            
+
             $endTime = microtime(true);
             $responseTime = round(($endTime - $startTime) * 1000, 2);
-            
+
             Log::channel('fotomultas')->info('Image served from cache', [
                 'user_id' => Auth::id(),
                 'image_url' => $imgUrl,
@@ -416,7 +416,7 @@ class FotomultasController extends Controller
                 'image_size_kb' => round(strlen(base64_decode($imageData)) / 1024, 2),
                 'timestamp' => now()->toISOString()
             ]);
-            
+
             return response(base64_decode($imageData), 200)
                 ->header('Content-Type', $mimeType)
                 ->header('Cache-Control', 'public, max-age=21600')
@@ -445,33 +445,33 @@ class FotomultasController extends Controller
         $createTime = null;
         if ($fotomulta->fecha_infraccion && $fotomulta->hora_infraccion) {
             $datetime = Carbon::parse($fotomulta->fecha_infraccion . ' ' . $fotomulta->hora_infraccion);
+            // MODIFICACIÓN: Se cambia el formato de la fecha para coincidir con el solicitado.
             $createTime = $datetime->format('Ymd\THis\Z');
         }
 
-        // Usar directamente el valor de la columna color
-        $carColor = $fotomulta->color;
+        // Asegurar que carColor sea siempre un string y nunca nulo. '99' es 'Desconocido'.
+        $carColor = (string) ($fotomulta->color ?? '99');
 
-        // Construir channelInfoVO
+        // Construir channelInfoVO con tipos de dato correctos
         $channelMappings = $this->getChannelMappings($fotomulta->localida);
-        
+
         $channelInfoVO = [
             'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
-            'state' => 1,
-            'gpsX' => $fotomulta->geom_lat ? (float) $fotomulta->geom_lat : null,
-            'gpsY' => $fotomulta->geom_lng ? (float) $fotomulta->geom_lng : null,
+            'state' => '1',
+            'gpsX' => $fotomulta->geom_lat ? (string) $fotomulta->geom_lat : null,
+            'gpsY' => $fotomulta->geom_lng ? (string) $fotomulta->geom_lng : null,
             'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
         ];
 
-        // Construir imgList con rutas completas
+        // Construir imgList
         $imgList = [];
         $imgFields = ['img1', 'img2', 'img3'];
         $radarId = $this->getRadarId($fotomulta->localida);
-        
+
         foreach ($imgFields as $index => $field) {
             if ($fotomulta->$field) {
-                // Construir la ruta: token_generado/id_radar/id_ticket/imagen
                 $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
-                
+
                 $imgList[] = [
                     'imgUrl' => $imgUrl,
                     'imgIdx' => $index + 1,
@@ -481,17 +481,17 @@ class FotomultasController extends Controller
         }
 
         return [
-            'carWayCode' => 0,
+            'carWayCode' => $fotomulta->carril, // MODIFICACIÓN: Se usa el valor de la columna 'carril'.
             'ticketUrl' => null,
-            'plateType' => 0,
-            'carDirect' => 0,
-            'dealStatus' => 0,
+            'plateType' => '0',
+            'carDirect' => '0',
+            'dealStatus' => null,
             'plateNum' => $fotomulta->placa,
             'carSpeed' => $fotomulta->velocidad_detectada ? (int) $fotomulta->velocidad_detectada : null,
-            'vehicleManufacturer' => 0,
+            'vehicleManufacturer' => '0',
             'recordId' => $recordId,
             'recType' => 1,
-            'snapHeadstock' => 0,
+            'snapHeadstock' => null,
             'carColor' => $carColor,
             'carType' => $fotomulta->tipo_vehiculo,
             'intervalCode' => null,
@@ -499,8 +499,8 @@ class FotomultasController extends Controller
             'channelInfoVO' => $channelInfoVO,
             'stopTime' => null,
             'intervalName' => null,
-            'id' => $fotomulta->ticket_id,
-            'capStartTime' => $fotomulta->fecha_infraccion,
+            'id' => null,
+            'capStartTime' => null,
             'capTime' => $createTime,
             'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
             'imgList' => $imgList,
@@ -511,11 +511,11 @@ class FotomultasController extends Controller
     {
         $apiKey = config('services.streetsoncloud.api_key');
         $baseUrl = config('services.streetsoncloud.api_url');
-        
+
         if (!$apiKey) {
             return response()->json(['error' => 'API key no configurada'], 500);
         }
-        
+
         $metaUrl = "{$baseUrl}/ticket-image/{$ticketId}/{$fileName}";
 
         try {
@@ -547,14 +547,13 @@ class FotomultasController extends Controller
                 ->header('Content-Type', $mime)
                 ->header('Cache-Control', 'public, max-age=3600')
                 ->header('X-Cache-Status', 'MISS');
-
         } catch (\Exception $e) {
             Log::channel('fotomultas')->error('Direct image download failed', [
                 'ticket_id' => $ticketId,
                 'filename' => $fileName,
                 'error' => $e->getMessage()
             ]);
-            
+
             return response()->json([
                 'error' => 'Error al procesar la imagen: ' . $e->getMessage()
             ], 500);
