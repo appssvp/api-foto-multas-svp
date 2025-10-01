@@ -1,33 +1,33 @@
 <?php
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FotomultasController;
+use App\Http\Controllers\RecepcionFotomultaController;
 
-// Health check (público - sin rate limit)
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
+
+
+// Ruta protegida para recibir los datos desde la otra aplicación.
+Route::post('/registros-validados', [RecepcionFotomultaController::class, 'store'])->middleware('auth:sanctum');
+
 Route::get('/health', [FotomultasController::class, 'health']);
 
-// Rate limiting por IP para endpoints públicos
+// Ruta de login con límite de intentos
 Route::middleware('throttle:login')->group(function () {
     Route::post('/auth/login', [FotomultasController::class, 'login']);
 });
 
-// Endpoints protegidos con autenticación y rate limiting
+// Rutas protegidas para el consumidor de la API (ej. SIMUCI)
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
-    
-    // Endpoint Detecciones - Rate limit moderado
     Route::post('/detecciones', [FotomultasController::class, 'detecciones']);
-    
-    // Endpoint Imágenes - Rate limit más permisivo para recursos
+    Route::post('/auth/logout', [FotomultasController::class, 'logout']);
+
     Route::middleware('throttle:images')->group(function () {
         Route::get('/imagenes/{imgUrl}', [FotomultasController::class, 'imagenes'])->where('imgUrl', '.*');
     });
-    
-    // Logout - Rate limit básico
-    Route::post('/auth/logout', [FotomultasController::class, 'logout']);
-});
-
-// Rutas administrativas con rate limiting estricto
-Route::middleware(['auth:sanctum', 'throttle:admin'])->group(function () {
-    // Aquí puedes agregar endpoints administrativos en el futuro
-    // Route::get('/admin/stats', [AdminController::class, 'stats']);
 });
