@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ class RecepcionFotomultaController extends Controller
     public function store(Request $request)
     {
         $detecciones = $request->json()->all();
-        
+
         if (!is_array($detecciones)) {
             return response()->json(['message' => 'El cuerpo de la petición debe ser un arreglo de detecciones.'], 400);
         }
@@ -48,7 +49,7 @@ class RecepcionFotomultaController extends Controller
             try {
                 // Mapear datos completos
                 $mappedData = $this->mapDeteccionToFotomulta($deteccion);
-                
+
                 Fotomulta::updateOrCreate(
                     ['ticket_id' => $deteccion['recordId']],
                     $mappedData
@@ -83,7 +84,7 @@ class RecepcionFotomultaController extends Controller
     {
         $channelName = $deteccion['channelInfoVO']['channelName'] ?? null;
         $siteMetadata = $this->getSiteMetadata($channelName);
-        
+
         // Parsear fecha y hora
         $carbonDate = null;
         if (isset($deteccion['capTime'])) {
@@ -110,7 +111,7 @@ class RecepcionFotomultaController extends Controller
             'ticket_id' => $deteccion['recordId'],
             'placa' => Str::upper(trim($deteccion['plateNum'] ?? '')),
             'velocidad_detectada' => $deteccion['carSpeed'] ?? null,
-            'velocidad_permitida' => 80, // Valor por defecto, ajusta según necesites
+            'velocidad_permitida' => 80,
             'fecha_infraccion' => $carbonDate?->toDateString(),
             'hora_infraccion' => $carbonDate?->toTimeString(),
             'carril' => $deteccion['carWayCode'] ?? null,
@@ -120,31 +121,25 @@ class RecepcionFotomultaController extends Controller
             'color' => $deteccion['carColor'] ?? null,
             'geom_lat' => $latitudFinal,
             'geom_lng' => $longitudFinal,
-            'imei' => $deteccion['channelCode'] ?? null,
+            'imei' => $deteccion['serial'] ?? null, 
             'img1' => $deteccion['imgList'][0]['imgUrl'] ?? null,
             'img2' => $deteccion['imgList'][1]['imgUrl'] ?? null,
             'img3' => $deteccion['imgList'][2]['imgUrl'] ?? null,
-            
-            // Metadatos del sitio
             'calle' => $siteMetadata['calle'] ?? null,
             'entre_calle_1' => $siteMetadata['entre_calle_1'] ?? null,
             'entre_calle_2' => $siteMetadata['entre_calle_2'] ?? null,
             'colonia' => $siteMetadata['colonia'] ?? null,
             'codigo_postal' => $siteMetadata['codigo_postal'] ?? null,
             'alcaldia' => $siteMetadata['alcaldia'] ?? null,
-            
-            // Constantes
             'articulo' => self::ARTICULO_CONST,
             'fraccion' => self::FRACCION_CONST,
             'parrafo' => self::PARRAFO_CONST,
             'motivacion' => self::MOTIVACION_CONST,
-            
-            // Campos opcionales
             'usuario_no' => null,
             'folio' => null,
             'marca' => null,
             'modelo' => null,
-            'modelo_dispositivo' => null,
+            'modelo_dispositivo' => $deteccion['cameraModel'] ?? null, 
             'tipo_vehiculo' => null,
             'servicio_publico' => null,
             'evidencia' => null,
