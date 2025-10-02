@@ -1,25 +1,17 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use App\Models\Fotomulta; // Asegúrate de que este es el modelo correcto en tu app de destino.
+use App\Models\Fotomulta;
 
 class RecepcionFotomultaController extends Controller
 {
-    /**
-     * Almacena una o más detecciones de fotomultas.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function store(Request $request)
     {
-        // El job envía un arreglo de detecciones, por lo que validamos que la petición sea un arreglo.
         $detecciones = $request->json()->all();
-
+        
         if (!is_array($detecciones)) {
             return response()->json(['message' => 'El cuerpo de la petición debe ser un arreglo de detecciones.'], 400);
         }
@@ -28,17 +20,14 @@ class RecepcionFotomultaController extends Controller
         $registrosCreados = 0;
 
         foreach ($detecciones as $index => $deteccion) {
-            // 1. Validar cada detección individualmente.
-            // Esta validación debe coincidir con la estructura que envía el job.
             $validator = Validator::make($deteccion, [
                 'plateNum' => 'required|string|max:20',
-                'carSpeed' => 'required|integer',
-                'capTime' => 'required|string',
-                'recordId' => 'required|string|unique:fotomultas,record_id_origen', // Asumiendo que guardas el recordId original.
-                // Añade aquí el resto de validaciones para los campos que recibes...
+                'carSpeed' => 'nullable|integer',
+                'capTime' => 'nullable|string',
+                'recordId' => 'required|string|unique:fotomultas,ticket_id', // <-- CAMBIO AQUÍ
                 'carWayCode' => 'nullable|integer',
-                'channelInfoVO' => 'required|array',
-                'channelInfoVO.channelName' => 'required|string',
+                'channelInfoVO' => 'nullable|array',
+                'channelInfoVO.channelName' => 'nullable|string',
             ]);
 
             if ($validator->fails()) {
@@ -46,27 +35,32 @@ class RecepcionFotomultaController extends Controller
                     'index' => $index,
                     'errores' => $validator->errors()
                 ];
-                continue; // Saltar al siguiente si este tiene errores.
+                continue;
             }
 
-            // 2. Mapear y guardar en la base de datos de destino.
             try {
-                // Aquí usamos 'updateOrCreate' para evitar duplicados si el job se reintenta.
-                // Necesitarás una columna única como 'record_id_origen' para guardar el 'recordId'.
                 Fotomulta::updateOrCreate(
-                    ['record_id_origen' => $deteccion['recordId']],
+                    ['ticket_id' => $deteccion['recordId']], // <-- CAMBIO AQUÍ
                     [
-                        'placa' => $deteccion['plateNum'],
-                        'velocidad_detectada' => $deteccion['carSpeed'],
-                        'fecha_infraccion' => \Carbon\Carbon::parse($deteccion['capTime'])->toDateString(),
-                        'hora_infraccion' => \Carbon\Carbon::parse($deteccion['capTime'])->toTimeString(),
-                        'carril' => $deteccion['carWayCode'],
-                        'nombre_radar' => $deteccion['channelInfoVO']['channelName'],
-                        // ... completa aquí el mapeo de todos los demás campos ...
+                        'placa' => $deteccion['plateNum'] ?? null,
+                        'velocidad_detectada' => $deteccion['carSpeed'] ?? null,
+                        'fecha_infraccion' => isset($deteccion['capTime']) ? \Carbon\Carbon::parse($deteccion['capTime'])->toDateString() : null,
+                        'hora_infraccion' => isset($deteccion['capTime']) ? \Carbon\Carbon::parse($deteccion['capTime'])->toTimeString() : null,
+                        'carril' => $deteccion['carWayCode'] ?? null,
+                        'nombre_radar' => $deteccion['channelInfoVO']['channelName'] ?? null,
+                        'localida' => $deteccion['channelInfoVO']['channelName'] ?? null,
+                        'tipo_vehiculo' => $deteccion['carType'] ?? null,
+                        'color' => $deteccion['carColor'] ?? null,
+                        'geom_lat' => $deteccion['channelInfoVO']['gpsX'] ?? null,
+                        'geom_lng' => $deteccion['channelInfoVO']['gpsY'] ?? null,
+                        'imei' => $deteccion['channelCode'] ?? null,
+                        // Manejo de imágenes si vienen en imgList
+                        'img1' => isset($deteccion['imgList'][0]) ? $deteccion['imgList'][0]['imgUrl'] : null,
+                        'img2' => isset($deteccion['imgList'][1]) ? $deteccion['imgList'][1]['imgUrl'] : null,
+                        'img3' => isset($deteccion['imgList'][2]) ? $deteccion['imgList'][2]['imgUrl'] : null,
                     ]
                 );
                 $registrosCreados++;
-
             } catch (\Exception $e) {
                 Log::error('Error al guardar fotomulta recibida por API.', [
                     'recordId' => $deteccion['recordId'] ?? 'N/A',
