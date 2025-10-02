@@ -21,10 +21,10 @@ class RecepcionFotomultaController extends Controller
 
         foreach ($detecciones as $index => $deteccion) {
             $validator = Validator::make($deteccion, [
-                'plateNum' => 'required|string|max:20',
+                'plateNum' => 'nullable|string|max:20', // CAMBIO: nullable en vez de required
                 'carSpeed' => 'nullable|integer',
                 'capTime' => 'nullable|string',
-                'recordId' => 'required|string|unique:fotomultas,ticket_id', 
+                'recordId' => 'required|string|unique:fotomultas,ticket_id',
                 'carWayCode' => 'nullable|integer',
                 'channelInfoVO' => 'nullable|array',
                 'channelInfoVO.channelName' => 'nullable|string',
@@ -40,7 +40,7 @@ class RecepcionFotomultaController extends Controller
 
             try {
                 Fotomulta::updateOrCreate(
-                    ['ticket_id' => $deteccion['recordId']], // <-- CAMBIO AQUÍ
+                    ['ticket_id' => $deteccion['recordId']],
                     [
                         'placa' => $deteccion['plateNum'] ?? null,
                         'velocidad_detectada' => $deteccion['carSpeed'] ?? null,
@@ -54,7 +54,6 @@ class RecepcionFotomultaController extends Controller
                         'geom_lat' => $deteccion['channelInfoVO']['gpsX'] ?? null,
                         'geom_lng' => $deteccion['channelInfoVO']['gpsY'] ?? null,
                         'imei' => $deteccion['channelCode'] ?? null,
-                        // Manejo de imágenes si vienen en imgList
                         'img1' => isset($deteccion['imgList'][0]) ? $deteccion['imgList'][0]['imgUrl'] : null,
                         'img2' => isset($deteccion['imgList'][1]) ? $deteccion['imgList'][1]['imgUrl'] : null,
                         'img3' => isset($deteccion['imgList'][2]) ? $deteccion['imgList'][2]['imgUrl'] : null,
@@ -78,11 +77,11 @@ class RecepcionFotomultaController extends Controller
                 'message' => 'Se procesó el lote con algunos errores.',
                 'registros_creados' => $registrosCreados,
                 'errores_detalle' => $errores,
-            ], 207); 
+            ], 207);
         }
 
         return response()->json([
             'message' => "Se procesaron {$registrosCreados} registros exitosamente."
-        ], 201); 
+        ], 201);
     }
 }
