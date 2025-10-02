@@ -436,76 +436,80 @@ class FotomultasController extends Controller
     /**
      * Mapea una fotomulta al formato de detección requerido
      */
-    private function mapFotomultaToDeteccion($fotomulta): array
-    {
-        // Generar recordId siempre como cadena aleatoria de 32 caracteres hexadecimales
-        $recordId = bin2hex(random_bytes(16));
+private function mapFotomultaToDeteccion($fotomulta): array
+{
+    // Generar recordId siempre como cadena aleatoria de 32 caracteres hexadecimales
+    $recordId = bin2hex(random_bytes(16));
 
-        // Formatear createTime al formato requerido
-        $createTime = null;
-        if ($fotomulta->fecha_infraccion && $fotomulta->hora_infraccion) {
-            $datetime = Carbon::parse($fotomulta->fecha_infraccion . ' ' . $fotomulta->hora_infraccion);
-            // MODIFICACIÓN: Se cambia el formato de la fecha para coincidir con el solicitado.
-            $createTime = $datetime->format('Ymd\THis\Z');
-        }
-
-        // Asegurar que carColor sea siempre un string y nunca nulo. '99' es 'Desconocido'.
-        $carColor = (string) ($fotomulta->color ?? '99');
-
-        // Construir channelInfoVO con tipos de dato correctos
-        $channelMappings = $this->getChannelMappings($fotomulta->localida);
-
-        $channelInfoVO = [
-            'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
-            'state' => '1',
-            'gpsX' => $fotomulta->geom_lat ? (string) $fotomulta->geom_lat : null,
-            'gpsY' => $fotomulta->geom_lng ? (string) $fotomulta->geom_lng : null,
-            'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
-        ];
-
-        // Construir imgList
-        $imgList = [];
-        $imgFields = ['img1', 'img2', 'img3'];
-        $radarId = $this->getRadarId($fotomulta->localida);
-
-        foreach ($imgFields as $index => $field) {
-            if ($fotomulta->$field) {
-                $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
-
-                $imgList[] = [
-                    'imgUrl' => $imgUrl,
-                    'imgIdx' => $index + 1,
-                    'imgType' => $index === 2 ? 2 : 0,
-                ];
-            }
-        }
-
-        return [
-            'carWayCode' => $fotomulta->carril, // MODIFICACIÓN: Se usa el valor de la columna 'carril'.
-            'ticketUrl' => null,
-            'plateType' => '0',
-            'carDirect' => '0',
-            'dealStatus' => null,
-            'plateNum' => $fotomulta->placa,
-            'carSpeed' => $fotomulta->velocidad_detectada ? (int) $fotomulta->velocidad_detectada : null,
-            'vehicleManufacturer' => '0',
-            'recordId' => $recordId,
-            'recType' => 1,
-            'snapHeadstock' => null,
-            'carColor' => $carColor,
-            'carType' => $fotomulta->tipo_vehiculo,
-            'intervalCode' => null,
-            'createTime' => $createTime,
-            'channelInfoVO' => $channelInfoVO,
-            'stopTime' => null,
-            'intervalName' => null,
-            'id' => null,
-            'capStartTime' => null,
-            'capTime' => $createTime,
-            'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
-            'imgList' => $imgList,
-        ];
+    // Formatear createTime al formato requerido
+    $createTime = null;
+    if ($fotomulta->fecha_infraccion && $fotomulta->hora_infraccion) {
+        // CORRECCIÓN: Convertir fecha a string si es objeto Carbon/Date
+        $fechaStr = is_string($fotomulta->fecha_infraccion) 
+            ? $fotomulta->fecha_infraccion 
+            : $fotomulta->fecha_infraccion->format('Y-m-d');
+            
+        $datetime = Carbon::parse($fechaStr . ' ' . $fotomulta->hora_infraccion);
+        $createTime = $datetime->format('Ymd\THis\Z');
     }
+
+    // Asegurar que carColor sea siempre un string y nunca nulo. '99' es 'Desconocido'.
+    $carColor = (string) ($fotomulta->color ?? '99');
+
+    // Construir channelInfoVO con tipos de dato correctos
+    $channelMappings = $this->getChannelMappings($fotomulta->localida);
+
+    $channelInfoVO = [
+        'channelName' => $channelMappings['channelName'] ?: $fotomulta->localida,
+        'state' => '1',
+        'gpsX' => $fotomulta->geom_lat ? (string) $fotomulta->geom_lat : null,
+        'gpsY' => $fotomulta->geom_lng ? (string) $fotomulta->geom_lng : null,
+        'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
+    ];
+
+    // Construir imgList
+    $imgList = [];
+    $imgFields = ['img1', 'img2', 'img3'];
+    $radarId = $this->getRadarId($fotomulta->localida);
+
+    foreach ($imgFields as $index => $field) {
+        if ($fotomulta->$field) {
+            $imgUrl = $recordId . '/' . $radarId . '/' . $fotomulta->ticket_id . '/' . $fotomulta->$field;
+
+            $imgList[] = [
+                'imgUrl' => $imgUrl,
+                'imgIdx' => $index + 1,
+                'imgType' => $index === 2 ? 2 : 0,
+            ];
+        }
+    }
+
+    return [
+        'carWayCode' => $fotomulta->carril,
+        'ticketUrl' => null,
+        'plateType' => '0',
+        'carDirect' => '0',
+        'dealStatus' => null,
+        'plateNum' => $fotomulta->placa,
+        'carSpeed' => $fotomulta->velocidad_detectada ? (int) $fotomulta->velocidad_detectada : null,
+        'vehicleManufacturer' => '0',
+        'recordId' => $recordId,
+        'recType' => 1,
+        'snapHeadstock' => null,
+        'carColor' => $carColor,
+        'carType' => $fotomulta->tipo_vehiculo,
+        'intervalCode' => null,
+        'createTime' => $createTime,
+        'channelInfoVO' => $channelInfoVO,
+        'stopTime' => null,
+        'intervalName' => null,
+        'id' => null,
+        'capStartTime' => null,
+        'capTime' => $createTime,
+        'channelCode' => $channelMappings['channelCode'] ?: $fotomulta->imei,
+        'imgList' => $imgList,
+    ];
+}
 
     private function descargarImagenDesdeAPI($ticketId, $fileName)
     {
