@@ -24,7 +24,7 @@ class RecepcionFotomultaController extends Controller
                 'plateNum' => 'required|string|max:20',
                 'carSpeed' => 'nullable|integer',
                 'capTime' => 'nullable|string',
-                'recordId' => 'required|string|unique:fotomultas,ticket_id', // <-- CAMBIO AQUÍ
+                'recordId' => 'required|string|unique:fotomultas,ticket_id', 
                 'carWayCode' => 'nullable|integer',
                 'channelInfoVO' => 'nullable|array',
                 'channelInfoVO.channelName' => 'nullable|string',
