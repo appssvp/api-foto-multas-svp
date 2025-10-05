@@ -18,11 +18,17 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\SecurityMiddleware::class,
         ]);
         
+        // Registrar alias de middlewares personalizados
+        $middleware->alias([
+            'api.key' => \App\Http\Middleware\ApiKeyAuth::class,
+            'security' => \App\Http\Middleware\SecurityMiddleware::class, 
+        ]);
+        
         // Excluir rutas API del middleware CSRF
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);
-
+        
         // SEGURIDAD: Agregar headers de seguridad
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
