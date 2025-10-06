@@ -10,7 +10,7 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
-        apiPrefix: 'api',
+        apiPrefix: 'v1',
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->api(prepend: [
@@ -27,7 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         
         // Excluir rutas API del middleware CSRF
         $middleware->validateCsrfTokens(except: [
-            'api/*',
+            'vi/*',
         ]);
         
         // SEGURIDAD: Agregar headers de seguridad
