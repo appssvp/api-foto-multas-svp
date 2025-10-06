@@ -26,11 +26,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 });
 
 // Rutas protegidas con API Key (para consumidores externos como SIMUCI)
-Route::middleware(['api.key', 'security', 'throttle:api'])->group(function () {
+Route::middleware(['api.key', 'api.key.throttle', 'security'])->group(function () {
     Route::post('/detecciones', [FotomultasController::class, 'detecciones']);
     
-    Route::middleware('throttle:images')->group(function () {
-        Route::get('/imagenes/{imgUrl}', [FotomultasController::class, 'imagenes'])
-            ->where('imgUrl', '.*');
-    });
+    Route::get('/imagenes/{imgUrl}', [FotomultasController::class, 'imagenes'])
+        ->where('imgUrl', '.*');
+
 });

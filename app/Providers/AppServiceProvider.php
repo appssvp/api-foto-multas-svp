@@ -30,14 +30,13 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureRateLimiting(): void
     {
-        // LOGIN: Usar variable de entorno
+
         RateLimiter::for('login', function (Request $request) {
             $maxAttempts = config('fotomultas.rate_limits.login_attempts', 5);
             
             return [
-                // Por IP: máximo definido en .env
                 Limit::perMinute($maxAttempts)->by($request->ip()),
-                // Por email: máximo 3 intentos por minuto por email específico
+
                 Limit::perMinute(3)->by($request->input('email'))->response(function () {
                     return response()->json([
                         'message' => 'Demasiados intentos de login. Intenta en 1 minuto.',

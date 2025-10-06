@@ -21,7 +21,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Registrar alias de middlewares personalizados
         $middleware->alias([
             'api.key' => \App\Http\Middleware\ApiKeyAuth::class,
-            'security' => \App\Http\Middleware\SecurityMiddleware::class, 
+            'security' => \App\Http\Middleware\SecurityMiddleware::class,
+            'api.key.throttle' => \App\Http\Middleware\ApiKeyRateLimiter::class, 
         ]);
         
         // Excluir rutas API del middleware CSRF
