@@ -31,5 +31,5 @@ Route::middleware(['api.key', 'api.key.throttle', 'security'])->group(function (
     Route::get('/imagenes/{imgUrl}', [FotomultasController::class, 'imagenes'])
         ->where('imgUrl', '.*');
     
-    Route::post('/registros-validados', [RecepcionFotomultaController::class, 'store']); // 👈 MOVIDO AQUÍ
+    Route::post('/registros-validados', [RecepcionFotomultaController::class, 'store']); 
 });
