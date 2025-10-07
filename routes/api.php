@@ -22,14 +22,14 @@ Route::middleware('throttle:login')->group(function () {
 // Rutas protegidas con Sanctum (para admins que hacen login)
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/auth/logout', [FotomultasController::class, 'logout']);
-    Route::post('/registros-validados', [RecepcionFotomultaController::class, 'store']);
 });
 
-// Rutas protegidas con API Key (para consumidores externos como SIMUCI)
+// Rutas protegidas con API Key (para consumidores externos como SIMUCI y servidor origen)
 Route::middleware(['api.key', 'api.key.throttle', 'security'])->group(function () {
     Route::post('/detecciones', [FotomultasController::class, 'detecciones']);
     
     Route::get('/imagenes/{imgUrl}', [FotomultasController::class, 'imagenes'])
         ->where('imgUrl', '.*');
-
+    
+    Route::post('/registros-validados', [RecepcionFotomultaController::class, 'store']); // 👈 MOVIDO AQUÍ
 });
