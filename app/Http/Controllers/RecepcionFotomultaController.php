@@ -121,10 +121,10 @@ class RecepcionFotomultaController extends Controller
             'color' => $deteccion['carColor'] ?? null,
             'geom_lat' => $latitudFinal,
             'geom_lng' => $longitudFinal,
-            'imei' => $deteccion['serial'] ?? null, 
-            'img1' => $deteccion['imgList'][0]['imgUrl'] ?? null,
-            'img2' => $deteccion['imgList'][1]['imgUrl'] ?? null,
-            'img3' => $deteccion['imgList'][2]['imgUrl'] ?? null,
+            'imei' => $deteccion['serial'] ?? null,
+            'img1' => $this->getImageByIdx($deteccion['imgList'] ?? [], 1),
+            'img2' => $this->getImageByIdx($deteccion['imgList'] ?? [], 2),
+            'img3' => $this->getImageByIdx($deteccion['imgList'] ?? [], 3),
             'calle' => $siteMetadata['calle'] ?? null,
             'entre_calle_1' => $siteMetadata['entre_calle_1'] ?? null,
             'entre_calle_2' => $siteMetadata['entre_calle_2'] ?? null,
@@ -139,7 +139,7 @@ class RecepcionFotomultaController extends Controller
             'folio' => null,
             'marca' => null,
             'modelo' => null,
-            'modelo_dispositivo' => $deteccion['cameraModel'] ?? null, 
+            'modelo_dispositivo' => $deteccion['cameraModel'] ?? null,
             'tipo_vehiculo' => null,
             'servicio_publico' => null,
             'evidencia' => null,
@@ -206,5 +206,15 @@ class RecepcionFotomultaController extends Controller
         ];
 
         return $coordinates[$channelName] ?? null;
+    }
+
+    private function getImageByIdx(array $imgList, int $idx): ?string
+    {
+        foreach ($imgList as $img) {
+            if (isset($img['imgIdx']) && $img['imgIdx'] === $idx) {
+                return $img['imgUrl'] ?? null;
+            }
+        }
+        return null;
     }
 }
