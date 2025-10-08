@@ -36,7 +36,7 @@ class SecurityMiddleware
             '/<script[^>]*>.*?<\/script>/is',
             '/<iframe[^>]*>.*?<\/iframe>/is',
             '/javascript:/i',
-            '/on\w+\s*=\s*["\']?[^"\']*["\']?/i', // onclick, onerror, onload, etc.
+            '/on\w+\s*=\s*["\']?[^"\']*["\']?/i',
             '/<img[^>]+src[^>]*>/i',
             '/<svg[^>]*onload/i',
             '/alert\s*\(/i',
@@ -81,15 +81,10 @@ class SecurityMiddleware
             '/<\?xml.*\?>/i',
         ],
 
-        // SSRF (Server-Side Request Forgery)
+        // SSRF (Server-Side Request Forgery) - Solo en producción
         'ssrf' => [
-            '/169\.254\.169\.254/', // AWS metadata
-            '/metadata\.google\.internal/', // GCP metadata
-            '/localhost/i',
-            '/127\.0\.0\.1/',
-            '/0\.0\.0\.0/',
-            '/::1/',
-            '/\[::1\]/',
+            '/169\.254\.169\.254/',
+            '/metadata\.google\.internal/',
         ],
 
         // NoSQL Injection
@@ -133,6 +128,27 @@ class SecurityMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
+
+        if (app()->environment('local')) {
+
+            $this->maliciousPatterns['ssrf'] = [
+                '/169\.254\.169\.254/',
+                '/metadata\.google\.internal/',
+
+            ];
+        } else {
+
+            $this->maliciousPatterns['ssrf'] = [
+                '/169\.254\.169\.254/',
+                '/metadata\.google\.internal/',
+                '/localhost/i',
+                '/127\.0\.0\.1/',
+                '/0\.0\.0\.0/',
+                '/::1/',
+                '/\[::1\]/',
+            ];
+        }
+
         // Verificar todas las entradas del request
         $allInputs = array_merge(
             $request->all(),

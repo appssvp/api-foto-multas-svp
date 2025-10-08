@@ -27,7 +27,8 @@ return Application::configure(basePath: dirname(__DIR__))
         
         // Excluir rutas API del middleware CSRF
         $middleware->validateCsrfTokens(except: [
-            'vi/*',
+            'v1/*',   
+            'api/*', 
         ]);
         
         // SEGURIDAD: Agregar headers de seguridad

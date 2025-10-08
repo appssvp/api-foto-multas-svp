@@ -7,18 +7,18 @@
     },
     "servers": [
         {
-            "url": "http://localhost:8000",
+            "url": "http://localhost:8000/v1",
             "description": "Servidor de desarrollo"
         }
     ],
     "paths": {
-        "/api/auth/login": {
+        "/auth/login": {
             "post": {
                 "tags": [
                     "Auth"
                 ],
                 "summary": "Autenticación",
-                "operationId": "46776896f85b58fd1d3bf99927a93c44",
+                "operationId": "7d22129569dc4edb4d5fc035ce574ec5",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -75,13 +75,13 @@
                 }
             }
         },
-        "/api/detecciones": {
+        "/detecciones": {
             "post": {
                 "tags": [
                     "Detecciones"
                 ],
                 "summary": "Obtener detecciones de fotomultas",
-                "operationId": "bab8430ca80f8325fd9e196e49b3be78",
+                "operationId": "6c7fed21104fea167828443a17680b74",
                 "requestBody": {
                     "required": false,
                     "content": {
@@ -151,13 +151,13 @@
                 ]
             }
         },
-        "/api/imagenes/{imgUrl}": {
+        "/imagenes/{imgUrl}": {
             "get": {
                 "tags": [
                     "Imágenes"
                 ],
                 "summary": "Obtener imagen de fotomulta por URL",
-                "operationId": "454670a2dd3461ee8d224cf515a6a436",
+                "operationId": "b6e03897eec0b87d1773369c54a053ee",
                 "parameters": [
                     {
                         "name": "imgUrl",
@@ -191,13 +191,13 @@
                 ]
             }
         },
-        "/api/auth/logout": {
+        "/auth/logout": {
             "post": {
                 "tags": [
                     "Auth"
                 ],
                 "summary": "Cerrar sesión",
-                "operationId": "01ad23fe04a1afe6b0ee09eb419c4345",
+                "operationId": "cc6e59a4d24bd88186a734db855b0e3f",
                 "responses": {
                     "200": {
                         "description": "Logout exitoso"
@@ -210,13 +210,13 @@
                 ]
             }
         },
-        "/api/health": {
+        "/health": {
             "get": {
                 "tags": [
                     "Health"
                 ],
                 "summary": "Health check endpoint",
-                "operationId": "ad219f8207bf14cbace7fc7e13026646",
+                "operationId": "295aed7b8327a5732af6c910e7cca49c",
                 "responses": {
                     "200": {
                         "description": "API funcionando correctamente",

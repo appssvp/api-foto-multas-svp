@@ -23,7 +23,7 @@ use App\Jobs\ProcessImageDownload;
  * )
  * 
  * @OA\Server(
- *     url="http://localhost:8000",
+ *     url="http://localhost:8000/v1",
  *     description="Servidor de desarrollo"
  * )
  * 
@@ -38,7 +38,7 @@ class FotomultasController extends Controller
 {
     /**
      * @OA\Post(
-     *     path="/api/auth/login",
+     *     path="/auth/login",
      *     tags={"Auth"},
      *     summary="Autenticación",
      *     @OA\RequestBody(
@@ -122,7 +122,7 @@ class FotomultasController extends Controller
 
     /**
      * @OA\Post(
-     *     path="/api/detecciones",
+     *     path="/detecciones",
      *     tags={"Detecciones"},
      *     summary="Obtener detecciones de fotomultas",
      *     security={{"bearerAuth":{}}},
@@ -229,7 +229,7 @@ class FotomultasController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/imagenes/{imgUrl}",
+     *     path="/imagenes/{imgUrl}",
      *     tags={"Imágenes"},
      *     summary="Obtener imagen de fotomulta por URL",
      *     security={{"bearerAuth":{}}},
@@ -298,7 +298,7 @@ class FotomultasController extends Controller
 
     /**
      * @OA\Post(
-     *     path="/api/auth/logout",
+     *     path="/auth/logout",
      *     tags={"Auth"},
      *     summary="Cerrar sesión",
      *     security={{"bearerAuth":{}}},
@@ -312,7 +312,7 @@ class FotomultasController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/health",
+     *     path="/health",
      *     tags={"Health"},
      *     summary="Health check endpoint",
      *     @OA\Response(
