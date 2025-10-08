@@ -33,6 +33,7 @@ class RecepcionFotomultaController extends Controller
                 'carSpeed' => 'nullable|integer',
                 'capTime' => 'nullable|string',
                 'recordId' => 'required|string|unique:fotomultas,ticket_id',
+                'ticketId' => 'nullable|string|unique:fotomultas,ticket_id',
                 'carWayCode' => 'nullable|integer',
                 'channelInfoVO' => 'nullable|array',
                 'channelInfoVO.channelName' => 'nullable|string',
@@ -51,7 +52,7 @@ class RecepcionFotomultaController extends Controller
                 $mappedData = $this->mapDeteccionToFotomulta($deteccion);
 
                 Fotomulta::updateOrCreate(
-                    ['ticket_id' => $deteccion['recordId']],
+                    ['ticket_id' => $deteccion['ticketId'] ?? $deteccion['recordId']],
                     $mappedData
                 );
                 $registrosCreados++;
@@ -108,7 +109,7 @@ class RecepcionFotomultaController extends Controller
         }
 
         return [
-            'ticket_id' => $deteccion['recordId'],
+            'ticket_id' => $deteccion['ticketId'] ?? $deteccion['recordId'],
             'placa' => Str::upper(trim($deteccion['plateNum'] ?? '')),
             'velocidad_detectada' => $deteccion['carSpeed'] ?? null,
             'velocidad_permitida' => 80,
