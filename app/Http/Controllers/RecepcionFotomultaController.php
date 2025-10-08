@@ -124,7 +124,7 @@ class RecepcionFotomultaController extends Controller
             'imei' => $deteccion['serial'] ?? null, 
             'img1' => $deteccion['imgList'][0]['imgUrl'] ?? null,
             'img2' => $deteccion['imgList'][1]['imgUrl'] ?? null,
-            'img3' => $deteccion['imgList'][3]['imgUrl'] ?? null,
+            'img3' => $deteccion['imgList'][2]['imgUrl'] ?? null,
             'calle' => $siteMetadata['calle'] ?? null,
             'entre_calle_1' => $siteMetadata['entre_calle_1'] ?? null,
             'entre_calle_2' => $siteMetadata['entre_calle_2'] ?? null,
